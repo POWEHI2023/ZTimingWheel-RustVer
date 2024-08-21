@@ -1,27 +1,37 @@
-pub mod tw_impl;
-pub use tw_impl::{TimingWheelController, WheelValue};
-use std::sync::mpsc;
-
-fn __debug_callback() -> u32 {
-    println!("callback~~");
-    return 0;
-}
+pub mod time_wheel;
+pub mod atomic_queue;
 
 #[cfg(test)]
 mod tests {
+    use std::{borrow::BorrowMut, cell::{RefCell, UnsafeCell}, sync::Mutex, thread};
+
+    use atomic_queue::{Queue, QueueNode};
+    use std::sync::Arc;
+
     use super::*;
 
-    
-
     #[test]
-    fn it_works() {
-        let mut _tw = TimingWheelController::new();
-        let wv = WheelValue::<fn() -> u32>::new_debug(0, false, __debug_callback);
-        let wv1 = WheelValue::<fn() -> u32>::new_debug(1, false, __debug_callback);
-        _tw.append(wv);
-        _tw.append(wv1);
+    fn test_queue() {
+        println!("Hello RustLocklessQueue.");
 
-        _tw.execute();
-        _tw.execute();
+        let mut que = Arc::new(Mutex::new(Queue::new(0)));
+
+        let mut ts = vec![];
+        for i in 0..1000 {
+            let mut q = Arc::clone(&que);
+            ts.push(thread::spawn(move || {
+                let mut guard = q.lock().unwrap();
+                guard.emplace(i);
+            }));
+        }
+
+        for i in ts {
+            i.join();
+        }
+
+        let mut guard = que.lock().unwrap();
+        guard.consume_all(|val: i32| {
+            println!("comsume value {val}");
+        });
     }
 }
