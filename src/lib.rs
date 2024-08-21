@@ -14,14 +14,18 @@ mod tests {
     fn test_queue() {
         println!("Hello RustLocklessQueue.");
 
-        let mut que = Arc::new(Mutex::new(Queue::new(0)));
+        // todo
+        // 1. can not multi-mutable borrow
+        // 2. can borrow from arc as mutable
+
+        let mut que = Arc::new(Queue::new(0));
 
         let mut ts = vec![];
         for i in 0..1000 {
             let mut q = Arc::clone(&que);
             ts.push(thread::spawn(move || {
-                let mut guard = q.lock().unwrap();
-                guard.emplace(i);
+                let ptr = Arc::into_raw(q).cast_mut();
+                unsafe { (*ptr).emplace(i) };
             }));
         }
 
@@ -29,9 +33,14 @@ mod tests {
             i.join();
         }
 
-        let mut guard = que.lock().unwrap();
-        guard.consume_all(|val: i32| {
-            println!("comsume value {val}");
-        });
+        // let mut guard = que.lock().unwrap();
+        // guard.consume_all(|val: i32| {
+        //    println!("comsume value {val}");
+        // });
+        let p = Arc::into_raw(que).cast_mut();
+        unsafe { (*p).consume_all(|val| {
+            println!("value is {val}");
+        }) };
+        // que.consume_all(|val| { print!("value is {val}"); });
     }
 }
