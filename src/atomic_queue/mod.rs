@@ -124,5 +124,11 @@ impl<T> Queue<T> {
      }
 }
 
+impl<T> Drop for Queue<T> {
+    fn drop(&mut self) {
+        todo!()
+    }
+}
+
 unsafe impl<T> Send for Queue<T> where T: Clone {}
 unsafe impl<T> Sync for Queue<T> where T: Clone {}

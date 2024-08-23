@@ -5,6 +5,7 @@ pub mod atomic_queue;
 mod tests {
     use std::thread;
     use atomic_queue::Queue;
+    use time_wheel::{Executor, WheelTask};
     use std::sync::Arc;
 
     use super::*;
@@ -41,5 +42,13 @@ mod tests {
             println!("value is {val}");
         }) };
         // que.consume_all(|val| { print!("value is {val}"); });
+    }
+
+    #[test]
+    fn test_inner_wheel() {
+        let num = 0;
+        let task = WheelTask::new(move || {num});
+        let out = task.execute();
+        println!("{out}");
     }
 }
