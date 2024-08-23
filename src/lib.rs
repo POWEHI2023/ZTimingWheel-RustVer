@@ -3,9 +3,8 @@ pub mod atomic_queue;
 
 #[cfg(test)]
 mod tests {
-    use std::{borrow::BorrowMut, cell::{RefCell, UnsafeCell}, sync::Mutex, thread};
-
-    use atomic_queue::{Queue, QueueNode};
+    use std::thread;
+    use atomic_queue::Queue;
     use std::sync::Arc;
 
     use super::*;
@@ -18,11 +17,11 @@ mod tests {
         // 1. can not multi-mutable borrow
         // 2. can borrow from arc as mutable
 
-        let mut que = Arc::new(Queue::new(0));
+        let que = Arc::new(Queue::new());
 
         let mut ts = vec![];
         for i in 0..1000 {
-            let mut q = Arc::clone(&que);
+            let q = Arc::clone(&que);
             ts.push(thread::spawn(move || {
                 let ptr = Arc::into_raw(q).cast_mut();
                 unsafe { (*ptr).emplace(i) };
@@ -30,7 +29,7 @@ mod tests {
         }
 
         for i in ts {
-            i.join();
+            let _ = i.join();
         }
 
         // let mut guard = que.lock().unwrap();

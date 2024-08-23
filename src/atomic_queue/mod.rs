@@ -1,57 +1,77 @@
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::ptr;
 use std::marker::PhantomPinned;
 
 // T: element in Node, has clone trait
-pub struct QueueNode<T>
-where 
-     T: Clone
+struct QueueNode<T>
 {
      val: T,
      next: AtomicUsize, // *mut QueueNode<T>,
      _marker: PhantomPinned,
 }
 
-impl<T> QueueNode<T> where T: Clone {
+impl<T> QueueNode<T> {
      fn new(val: T) -> QueueNode<T> {
           QueueNode {
-               val, next: AtomicUsize::new(0),
+               val, 
+               next: AtomicUsize::new(0),
                _marker: PhantomPinned,
           }
      }
 
-     fn next(&self) -> *mut QueueNode<T> {
-          unsafe {
-               let addr = self.next.load(Ordering::Relaxed);
-               if addr == 0 { ptr::null_mut() }
-               else { addr as *mut QueueNode<T> }
+     fn next(&self) -> *mut QueueNode<T> {  
+          let addr = self.next.load(Ordering::Relaxed);
+          if addr == 0 { ptr::null_mut() }
+          else { addr as *mut QueueNode<T> }
+     }
+}
+
+struct QueueHead
+{
+     next: AtomicUsize, // *mut QueueNode<T>,
+     _marker: PhantomPinned,
+}
+
+impl QueueHead {
+     fn new() -> Self {
+          QueueHead {
+               next: AtomicUsize::new(0),
+               _marker: PhantomPinned,
           }
+     }
+
+     fn next<T>(&self) -> *mut QueueNode<T> {
+          let addr = self.next.load(Ordering::Relaxed);
+          if addr == 0 { ptr::null_mut() }
+          else { addr as *mut QueueNode<T> }
      }
 }
 
 // T: element type in Queue
 pub struct Queue<T> 
-where
-     T: Clone
 {
-     head: Box::<QueueNode<T>>,
+     head: Box::<QueueHead>,
      tail: AtomicUsize,  // *mut QueueNode<T>,
      size: AtomicUsize,
      _marker: PhantomPinned,
+
+     _anotation: Option<T>,
 }
 
-impl<T> Queue<T> where T: Clone {
-     pub fn new(head_val: T) -> Queue<T> {
-          let node = Box::into_raw(Box::new(QueueNode::new(head_val)));
+impl<T> Queue<T> {
+     pub fn new() -> Queue<T> {
+          let node = Box::into_raw(Box::new(QueueHead::new()));
           Queue {
                head: unsafe { Box::from_raw(node) },
                tail: (node as usize).into(),
                size: 0.into(),
                _marker: PhantomPinned,
+
+               _anotation: None,
           }
      }
 
-
+     // the type is clear after emplace function call
      pub fn emplace(&mut self, val: T) {
           let node = Box::into_raw(Box::new(
                QueueNode::new(val)
@@ -68,7 +88,7 @@ impl<T> Queue<T> where T: Clone {
           }
 
           unsafe {
-               let front = (crt_tail as *mut QueueNode<T>);
+               let front = crt_tail as *mut QueueNode<T>;
                let old = (*front).next.load(Ordering::Relaxed);
                (*front).next.compare_exchange(old, node as usize, Ordering::Relaxed, Ordering::Relaxed).unwrap();
           }
@@ -85,28 +105,18 @@ impl<T> Queue<T> where T: Clone {
                }
 
                // for each task in current queue, callback them
-               unsafe { callback((*crt).val.clone()); }
+               // auto-dropped
+               let ecrt = unsafe { Box::from_raw(crt) };
+               callback(ecrt.val);
                ret += 1;
 
-               // crt is tail
                if crt as usize == self.tail.load(Ordering::Relaxed) {
-                    // clean the memory
-                    unsafe {
-                         // set new head
-                         self.head.next.store((*crt).next.load(Ordering::Relaxed), Ordering::Relaxed); 
-                         drop(Box::from_raw(crt)); 
-                    }
+                    unsafe { self.head.next.store((*crt).next.load(Ordering::Relaxed), Ordering::Relaxed); }
                     break;
                } else {
-                    // crt is not tail
                     unsafe {
-                         while (*crt).next().is_null() {
-                              // wait emplace task set new tail
-                         }
-                         // clean the memory
-                         let old = crt;
+                         while (*crt).next().is_null() { /* wait emplace task set new tail*/ }
                          crt = (*crt).next();
-                         drop(Box::from_raw(old));
                     }
                }
           }
