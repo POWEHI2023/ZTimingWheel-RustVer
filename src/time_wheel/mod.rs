@@ -1,5 +1,4 @@
 // Clone deep; Copy shallow
-use std::{rc::Rc, usize};
 
 use crate::atomic_queue::Queue;
 
@@ -11,10 +10,10 @@ pub trait Executor {
 
 pub struct WheelTask<T>
 where 
-    T: std::ops::Fn() -> usize
+    T: std::ops::Fn() -> usize + 'static
 {
     callback: T,
-    _dopped: bool,
+    _dropped: bool,
 }
 
 impl<T> WheelTask<T>
@@ -26,8 +25,15 @@ where
     pub fn new(callback: T) -> Self {
         WheelTask {
             callback,
-            _dopped: false,
+            _dropped: false,
         }
+    }
+
+    pub fn new_as_executor(callback: T) -> Box<dyn Executor> {
+        Box::new(WheelTask {
+            callback,
+            _dropped: false,
+        })
     }
 }
 
@@ -36,7 +42,7 @@ where
     T: std::ops::Fn() -> usize
 {
     fn execute(&self) -> usize {
-        if !self._dopped { (self.callback)() }
+        if !self._dropped { (self.callback)() }
         else {0}
     }
 }
@@ -45,11 +51,11 @@ where
 
 // time wheel, innerwheel
 // we do not need clone or copy this wheel, because it's unique for every system
-struct InnerWheel// <T>
+pub struct InnerWheel// <T>
 // where 
 //     T: Clone
 {
-    slots: Vec<Queue< Rc<Box<dyn Executor>> >>,
+    slots: Vec<Queue< Box<dyn Executor> >>,
     cursor: usize,
     // mission channel for async insert into current wheel
     // rx: mpsc::Receiver<SendedTask<fn () -> usize>>,  // for receiving insert/remove command
@@ -57,16 +63,16 @@ struct InnerWheel// <T>
 
 impl InnerWheel
 {
-    fn new() -> Self {
+    pub fn new() -> Self {
         let mut slots = vec![];
         for _ in 0..WHEEL_SLOTS_NUMBER {
-            slots.push(Queue::<Rc<Box<dyn Executor>>>::new());
+            slots.push(Queue::<Box<dyn Executor>>::new());
         }
 
         InnerWheel { slots, cursor: 0 }
     }
 
-    fn execute(&mut self) -> bool {
+    pub fn execute(&mut self) -> bool {
         self.slots[self.cursor].consume_all(|val| {
             val.execute();
         });
@@ -77,6 +83,13 @@ impl InnerWheel
 
             true
         } else { false }
+    }
+
+    pub fn insert_task(&mut self, index: usize, task: Box<dyn Executor>) {
+        if index >= WHEEL_SLOTS_NUMBER {
+            return;
+        }
+        self.slots[index].emplace(task)
     }
 }
 

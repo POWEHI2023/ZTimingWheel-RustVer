@@ -3,8 +3,7 @@ use std::ptr;
 use std::marker::PhantomPinned;
 
 // T: element in Node, has clone trait
-struct QueueNode<T>
-{
+struct QueueNode<T> {
      val: T,
      next: AtomicUsize, // *mut QueueNode<T>,
      _marker: PhantomPinned,
@@ -26,8 +25,7 @@ impl<T> QueueNode<T> {
      }
 }
 
-struct QueueHead
-{
+struct QueueHead {
      next: AtomicUsize, // *mut QueueNode<T>,
      _marker: PhantomPinned,
 }
@@ -50,7 +48,7 @@ impl QueueHead {
 // T: element type in Queue
 pub struct Queue<T> 
 {
-     head: Box::<QueueHead>,
+     head: QueueHead,
      tail: AtomicUsize,  // *mut QueueNode<T>,
      size: AtomicUsize,
      _marker: PhantomPinned,
@@ -59,14 +57,12 @@ pub struct Queue<T>
 }
 
 impl<T> Queue<T> {
-     pub fn new() -> Queue<T> {
-          let node = Box::into_raw(Box::new(QueueHead::new()));
+     pub fn new() -> Self {
           Queue {
-               head: unsafe { Box::from_raw(node) },
-               tail: (node as usize).into(),
+               head: QueueHead::new(),
+               tail: AtomicUsize::new(0),
                size: 0.into(),
                _marker: PhantomPinned,
-
                _anotation: None,
           }
      }
@@ -77,8 +73,11 @@ impl<T> Queue<T> {
                QueueNode::new(val)
           ));
 
+          // should be head in the beginning
           let mut crt_tail = self.tail.load(Ordering::Relaxed);
+
           loop {
+               // exchange self{head, tail(head -> node)}
                match self.tail.compare_exchange_weak(crt_tail, node as usize, Ordering::Relaxed, Ordering::Relaxed) {
                     Ok(_) => break,
                     Err(_) => {
@@ -86,11 +85,15 @@ impl<T> Queue<T> {
                     },
                }
           }
+          // now self{head, tail(node)}
 
-          unsafe {
+          if crt_tail == 0 {
+               self.head.next.store(node as usize, Ordering::Relaxed);
+          } else {
                let front = crt_tail as *mut QueueNode<T>;
-               let old = (*front).next.load(Ordering::Relaxed);
-               (*front).next.compare_exchange(old, node as usize, Ordering::Relaxed, Ordering::Relaxed).unwrap();
+               unsafe {
+                    (*front).next.store(node as usize, Ordering::Relaxed);
+               }
           }
 
           self.size.fetch_add(1, Ordering::Relaxed);
@@ -98,10 +101,13 @@ impl<T> Queue<T> {
 
      pub fn consume_all(&mut self, callback: impl Fn(T)) -> usize {
           let mut crt = self.head.next();
+          // there's no element in current queue, just return
+          if (crt as usize == 0) { return 0; }
+
           let mut ret = 0;
           loop {
                if crt as usize == 0 {
-                    break;
+                    panic!("Queue::consume_all(): break the loop in wrong position!");
                }
 
                // for each task in current queue, callback them
@@ -111,6 +117,12 @@ impl<T> Queue<T> {
                ret += 1;
 
                if crt as usize == self.tail.load(Ordering::Relaxed) {
+                    match self.tail.compare_exchange_weak(crt as usize, 0, Ordering::Relaxed, Ordering::Relaxed) {
+                        Ok(_) => {},
+                        // if there is new node appended as new tail, we should goto another branch of if
+                        Err(_) => continue,
+                    }
+
                     unsafe { self.head.next.store((*crt).next.load(Ordering::Relaxed), Ordering::Relaxed); }
                     break;
                } else {
@@ -125,9 +137,10 @@ impl<T> Queue<T> {
 }
 
 impl<T> Drop for Queue<T> {
-    fn drop(&mut self) {
-        todo!()
-    }
+     fn drop(&mut self) {
+          // do nothing but free all nodes in queue
+          self.consume_all(|_| {});
+     }
 }
 
 unsafe impl<T> Send for Queue<T> where T: Clone {}

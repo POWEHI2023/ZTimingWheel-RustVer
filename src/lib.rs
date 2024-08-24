@@ -3,9 +3,9 @@ pub mod atomic_queue;
 
 #[cfg(test)]
 mod tests {
-    use std::thread;
+    use std::{pin::Pin, thread};
     use atomic_queue::Queue;
-    use time_wheel::{Executor, WheelTask};
+    use time_wheel::{Executor, InnerWheel, WheelTask};
     use std::sync::Arc;
 
     use super::*;
@@ -50,5 +50,19 @@ mod tests {
         let task = WheelTask::new(move || {num});
         let out = task.execute();
         println!("{out}");
+
+        let mut wheel = InnerWheel::new();
+
+        wheel.insert_task(0, Box::new(WheelTask::new(|| {
+            println!("Hello Timing Wheel!");
+            0
+        })));
+
+        wheel.insert_task(0, Box::new(WheelTask::new(|| {
+            println!("Hello Timing Wheel Again!");
+            0
+        })));
+
+        wheel.execute();
     }
 }
