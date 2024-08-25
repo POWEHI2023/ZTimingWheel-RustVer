@@ -3,7 +3,7 @@ pub mod atomic_queue;
 
 #[cfg(test)]
 mod tests {
-    use std::{pin::Pin, thread::{self, sleep}, time::Duration};
+    use std::thread;
     use atomic_queue::Queue;
     use time_wheel::{Executor, InnerWheel, WheelTask};
     use std::sync::Arc;
