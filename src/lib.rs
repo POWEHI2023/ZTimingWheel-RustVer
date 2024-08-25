@@ -3,7 +3,7 @@ pub mod atomic_queue;
 
 #[cfg(test)]
 mod tests {
-    use std::thread;
+    use std::{cell::RefCell, collections::HashMap, sync::Mutex, thread};
     use atomic_queue::Queue;
     use time_wheel::{Executor, InnerWheel, WheelTask};
     use std::sync::Arc;
@@ -21,7 +21,7 @@ mod tests {
         let que = Arc::new(Queue::new());
 
         let mut ts = vec![];
-        for i in 0..1000 {
+        for i in 0..5000 {
             let q = Arc::clone(&que);
             ts.push(thread::spawn(move || {
                 let ptr = Arc::into_raw(q).cast_mut();
@@ -38,9 +38,21 @@ mod tests {
         //    println!("comsume value {val}");
         // });
         let p = Arc::into_raw(que).cast_mut();
+
+        // let map: Arc<Mutex<HashMap<i32, usize>>> = Arc::new(Mutex::new(HashMap::new()));
+        let map: RefCell<HashMap<i32, i32>> = RefCell::new(HashMap::new());
         unsafe { (*p).consume_all(|val| {
-            println!("value is {val}");
+            // let mut map = map.lock().unwrap();
+            let mut map = map.borrow_mut();
+            let count = map.entry(val).or_insert(0);
+            *count += 1;
         }) };
+
+        for i in 0..5000 {
+            let mut map = map.borrow_mut();
+            let x = map.entry(i).or_insert(0);
+            assert_eq!(*x, 1, "ERROR: {x} is not 1, but it should be");
+        }
         // que.consume_all(|val| { print!("value is {val}"); });
     }
 
