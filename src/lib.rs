@@ -44,6 +44,12 @@ mod tests {
         // que.consume_all(|val| { print!("value is {val}"); });
     }
 
+
+    #[test]
+    fn test_queue_pop() {
+        todo!("Finish test cases for pop function first!");
+    }
+
     #[test]
     fn test_inner_wheel() {
         let num = 0;

@@ -139,11 +139,47 @@ impl<T> Queue<T> {
           }
 
           // update size of current queue
-          let mut crt_size = self.size.load(Ordering::Relaxed);
+          /*let mut crt_size = self.size.load(Ordering::Relaxed);
           loop {
                match self.size.compare_exchange_weak(crt_size, crt_size - ret, Ordering::Relaxed, Ordering::Relaxed) {
                     Ok(_) => return ret,
                     Err(_) => crt_size = self.size.load(Ordering::Relaxed),
+               }
+          }*/
+          self.size.fetch_sub(ret, Ordering::Relaxed);
+          ret
+     }
+}
+
+impl<T> Queue<T> {
+     // pop the front element if it exists
+     pub fn pop(&mut self) -> Option<T> {
+          loop {
+               let node: *mut QueueNode<T> = self.head.next();
+
+               let tail = self.tail.load(Ordering::Relaxed);
+               if tail == 0 {
+                    return None;
+               }
+
+               if node as usize == tail {
+                    let _ = self.tail.compare_exchange(tail, 0, Ordering::Relaxed, Ordering::Relaxed);
+               }
+
+               // if successed, the next of head is current node, op successed
+               // else failed, exchanged by another thread then loop again, till the queue is empty or pop successed
+               match self.head.next.compare_exchange_weak(
+                    node as usize,
+                    unsafe { (*node).next.load(Ordering::Relaxed) }, 
+                    Ordering::Relaxed, Ordering::Relaxed) 
+               {
+                    Ok(_) => {
+                         self.size.fetch_sub(1, Ordering::Relaxed);
+
+                         let node = unsafe { Box::from_raw(node) };
+                         return Some(node.val);
+                    },
+                    Err(_) => continue,
                }
           }
      }
