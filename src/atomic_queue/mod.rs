@@ -1,6 +1,5 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::ptr;
-use std::marker::PhantomPinned;
+use std::sync::{ Mutex, atomic::{AtomicUsize, Ordering} };
+use std::{ ptr, marker::PhantomPinned };
 
 // T: element in Node, has clone trait
 struct QueueNode<T> {
@@ -46,13 +45,14 @@ impl QueueHead {
 }
 
 // T: element type in Queue
-pub struct Queue<T> 
-{
+pub struct Queue<T> {
      head: QueueHead,
      tail: AtomicUsize,  // *mut QueueNode<T>,
      size: AtomicUsize,
-     _marker: PhantomPinned,
 
+     mtx: Mutex<bool>,
+
+     _marker: PhantomPinned,
      _anotation: Option<T>,
 }
 
@@ -62,6 +62,9 @@ impl<T> Queue<T> {
                head: QueueHead::new(),
                tail: AtomicUsize::new(0),
                size: 0.into(),
+
+               mtx: Mutex::new(true),
+
                _marker: PhantomPinned,
                _anotation: None,
           }
@@ -100,15 +103,19 @@ impl<T> Queue<T> {
      }
 
      pub fn consume_all(&mut self, callback: impl Fn(T)) -> usize {
+          // touch lock for this consumer, auto-release
+          let _locker = self.mtx.lock().unwrap();
+          // there is no queue_node here
+          if self.tail.load(Ordering::Relaxed) == 0 { return 0; }
+
+          // for each node
           let mut crt = self.head.next();
           // there's no element in current queue, just return
-          if (crt as usize == 0) { return 0; }
+          if crt as usize == 0 { return 0; }
 
           let mut ret = 0;
           loop {
-               if crt as usize == 0 {
-                    panic!("Queue::consume_all(): break the loop in wrong position!");
-               }
+               assert_ne!(crt as usize, 0, "Queue::consume_all(): break the loop in wrong position!");
 
                // for each task in current queue, callback them
                // auto-dropped
@@ -118,18 +125,20 @@ impl<T> Queue<T> {
 
                if crt as usize == self.tail.load(Ordering::Relaxed) {
                     match self.tail.compare_exchange_weak(crt as usize, 0, Ordering::Relaxed, Ordering::Relaxed) {
-                        Ok(_) => {},
-                        // if there is new node appended as new tail, we should goto another branch of if
-                        Err(_) => continue,
+                        Ok(_) => {
+                              // unnecessary because if tail is 0, head will be the next node emplaced
+                              // unsafe { self.head.next.store((*crt).next.load(Ordering::Relaxed), Ordering::Relaxed); }
+                              break;
+                        },
+                        // if there is a new appended node as new tail, we should goto another branch of if
+                        Err(_) => {},
                     }
+               }
 
-                    unsafe { self.head.next.store((*crt).next.load(Ordering::Relaxed), Ordering::Relaxed); }
-                    break;
-               } else {
-                    unsafe {
-                         while (*crt).next().is_null() { /* wait emplace task set new tail*/ }
-                         crt = (*crt).next();
-                    }
+               // un-breaked logic branch
+               unsafe {
+                    while (*crt).next().is_null() { /* wait emplace task to set a new tail*/ }
+                    crt = (*crt).next();
                }
           }
           ret

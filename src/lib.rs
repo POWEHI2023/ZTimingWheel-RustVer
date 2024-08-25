@@ -3,7 +3,7 @@ pub mod atomic_queue;
 
 #[cfg(test)]
 mod tests {
-    use std::{pin::Pin, thread};
+    use std::{pin::Pin, thread::{self, sleep}, time::Duration};
     use atomic_queue::Queue;
     use time_wheel::{Executor, InnerWheel, WheelTask};
     use std::sync::Arc;
@@ -63,6 +63,19 @@ mod tests {
             0
         })));
 
+        wheel.insert_task(1, Box::new(WheelTask::new(|| {
+            println!("Hello Timing Wheel In Position 1!");
+            0
+        })));
+
+        wheel.insert_task(2, Box::new(WheelTask::new(|| {
+            println!("Hello Timing Wheel In Position 2!");
+            0
+        })));
+
+        wheel.execute();
+        
+        println!("# Execute next slot.");
         wheel.execute();
     }
 }
