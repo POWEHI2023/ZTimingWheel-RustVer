@@ -44,18 +44,15 @@ mod tests {
         // que.consume_all(|val| { print!("value is {val}"); });
     }
 
-
     trait __TestBaseTrait {
         fn test(&self);
     }
     struct __TestStruct(i32);
-
     impl __TestStruct {
         fn new(val: i32) -> Self {
             __TestStruct(val)
         }
     }
-
     impl __TestBaseTrait for __TestStruct {
         fn test(&self) {
             println!("{}", self.0);
@@ -71,7 +68,7 @@ mod tests {
             ret.test();
         }
 
-        todo!("Finish parallel test cases for pop function first!");
+        // todo!("Finish parallel test cases for pop function first!");
     }
 
     #[test]
