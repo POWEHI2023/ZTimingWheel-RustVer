@@ -11,8 +11,7 @@ struct QueueNode<T> {
 impl<T> QueueNode<T> {
      fn new(val: T) -> QueueNode<T> {
           QueueNode {
-               val, 
-               next: AtomicUsize::new(0),
+               val, next: 0.into(),
                _marker: PhantomPinned,
           }
      }
@@ -32,7 +31,7 @@ struct QueueHead {
 impl QueueHead {
      fn new() -> Self {
           QueueHead {
-               next: AtomicUsize::new(0),
+               next: 0.into(),
                _marker: PhantomPinned,
           }
      }
@@ -49,7 +48,6 @@ pub struct Queue<T> {
      head: QueueHead,
      tail: AtomicUsize,  // *mut QueueNode<T>,
      size: AtomicUsize,
-
      mtx: Mutex<bool>,
 
      _marker: PhantomPinned,
@@ -60,9 +58,7 @@ impl<T> Queue<T> {
      pub fn new() -> Self {
           Queue {
                head: QueueHead::new(),
-               tail: AtomicUsize::new(0),
-               size: 0.into(),
-
+               tail: 0.into(), size: 0.into(),
                mtx: Mutex::new(true),
 
                _marker: PhantomPinned,
@@ -141,14 +137,27 @@ impl<T> Queue<T> {
                     crt = (*crt).next();
                }
           }
-          ret
+
+          // update size of current queue
+          let mut crt_size = self.size.load(Ordering::Relaxed);
+          loop {
+               match self.size.compare_exchange_weak(crt_size, crt_size - ret, Ordering::Relaxed, Ordering::Relaxed) {
+                    Ok(_) => return ret,
+                    Err(_) => crt_size = self.size.load(Ordering::Relaxed),
+               }
+          }
      }
 }
 
 impl<T> Drop for Queue<T> {
      fn drop(&mut self) {
           // do nothing but free all nodes in queue
-          self.consume_all(|_| {});
+          let _ret = self.consume_all(|_| {});
+
+          // DEBUG
+          if _ret != 0 {
+               println!("Drop queue with size {_ret}");
+          }
      }
 }
 
