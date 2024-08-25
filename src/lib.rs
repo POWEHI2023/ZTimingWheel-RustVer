@@ -45,9 +45,33 @@ mod tests {
     }
 
 
+    trait __TestBaseTrait {
+        fn test(&self);
+    }
+    struct __TestStruct(i32);
+
+    impl __TestStruct {
+        fn new(val: i32) -> Self {
+            __TestStruct(val)
+        }
+    }
+
+    impl __TestBaseTrait for __TestStruct {
+        fn test(&self) {
+            println!("{}", self.0);
+        }
+    }
+
     #[test]
     fn test_queue_pop() {
-        todo!("Finish test cases for pop function first!");
+        let mut que = Queue::<Box<dyn __TestBaseTrait>>::new();
+        que.emplace(Box::new(__TestStruct::new(99)));
+
+        if let Some(ret) = que.pop() {
+            ret.test();
+        }
+
+        todo!("Finish parallel test cases for pop function first!");
     }
 
     #[test]
